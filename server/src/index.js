@@ -1,4 +1,3 @@
-
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
@@ -16,14 +15,29 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-const { data: dbQuestions, error: questionsError } = await supabase
-  .from('questions')
-  .select('id, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty')
-  .order('id', { ascending: true });
+// Load all questions in batches to avoid Supabase's default row limit
+const PAGE_SIZE = 1000;
+let dbQuestions = [];
 
-if (questionsError) {
-  throw new Error(`Could not load questions from Supabase: ${questionsError.message}`);
+for (let from = 0; ; from += PAGE_SIZE) {
+  const { data, error } = await supabase
+    .from('questions')
+    .select('id, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty')
+    .order('id', { ascending: true })
+    .range(from, from + PAGE_SIZE - 1);
+
+  if (error) {
+    throw new Error(`Could not load questions from Supabase: ${error.message}`);
+  }
+
+  dbQuestions.push(...(data || []));
+
+  if (!data || data.length < PAGE_SIZE) {
+    break;
+  }
 }
+
+console.log(`Loaded ${dbQuestions.length} questions from Supabase.`);
 
 const answerIndexes = { A: 0, B: 1, C: 2, D: 3 };
 
